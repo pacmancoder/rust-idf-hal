@@ -1,10 +1,12 @@
 //! This crate provides abstraction layer for idf framework access.
-//! Currently, to obtain access to the specific hardware, client code
+//! To obtain access to the specific hardware, client code
 //! should own all peripherals with `peripherals::Peripherals::take()`
-//! and than move required peripheral parts (e.g. wifi) to the destination
-//! (e.g. function, structure, thread).
-//! After peripheral was owned, it can be passed to the corresponding
-//! wrapper class (e.g. wifi to `wifi::WifiHardware`
+//! and then move required peripheral parts (e.g. wifi) to the destination
+//! (e.g. function, structure, thread). These peripheral parts are serving as virtual "handles",
+//! and to make actual work with them, they should be passed to wrapper classses such as
+//! [WifiHardware](wifi/struct.WiFiHardware.html)
+//!
+//! See example of peripheral initialization in the [wifi](wifi/index.html) crate
 
 #![no_std]
 

@@ -2,25 +2,29 @@
 //! To use WiFiHarware type, defined in this module, WiFiPeripherals
 //! instance should be obtained first.
 //!
-//! Example usage:
-//! ```rust
-//!    let peripherals = Peripherals::take().unwrap();
+//! # Examples
+//! ```no_run
+//! # use idf_hal::{
+//! #     peripherals::Peripherals,
+//! #     wifi::{WiFiAuthMode, WiFiHardware, WiFiApConfigurationBuilder},
+//! # };
 //!
-//!    let ap_config = WiFiApConfigurationBuilder::new()
-//!        .ssid("Hello, world!")
-//!        .auth_mode(WiFiAuthMode::Wpa2Psk)
-//!        .password("mypassword")
-//!        .build().ok().unwrap();
+//! let peripherals = Peripherals::take().unwrap();
 //!
-//!    let wifi_configurator = WiFiHardware::new(peripherals.wifi)
-//!        .initialize()
-//!        .ok().unwrap();
+//! let ap_config = WiFiApConfigurationBuilder::new()
+//!     .ssid("Hello, world!")
+//!     .auth_mode(WiFiAuthMode::WpaWpa2Psk)
+//!     .password("mypassword")
+//!     .build().ok().unwrap();
 //!
-//!    let wifi = wifi_configurator
-//!        .set_ap_config(ap_config)
-//!        .start()
-//!        .ok().unwrap();
+//! let wifi_configurator = WiFiHardware::new(peripherals.wifi)
+//!     .initialize()
+//!     .ok().unwrap();
 //!
+//! let wifi = wifi_configurator
+//!     .set_ap_config(ap_config)
+//!     .start()
+//!     .ok().unwrap();
 //! ```
 use crate::peripherals::WiFiPeripherals;
 
@@ -30,19 +34,44 @@ use idf_sys:: {
     network_adapter::*,
 };
 
+/// Represents WiFi hardware instance.
+///
+/// Should be be constructed from
+/// [WiFiPeripherals](../peripherals/struct.WiFiPeripherals.html)
+///
+/// Provides hardware initialization/deinitialization methods.
+///
+/// Transforms into
+/// [WiFiConfigurator](struct.WiFiConfigurator.html) after [initialization](#method.initialize).
+/// for further WiFi setup.
+///
+/// Using [deinitialize](#method.deinitialize) it can be downgraded back to `WiFiPeripherals`
 pub struct WiFiHardware {
     initialized: bool,
     peripherals: WiFiPeripherals,
 }
 
+/// Provides facilities to configure WiFi in AP/STA/both mode.
+///
+/// Can be obtained from
+/// [WiFiHardware.initialize](struct.WiFiHardware.html#method.initialize).
 pub struct WiFiConfigurator {
     wifi: WiFi,
 }
 
+/// Represents WiFi access point configuration.
+///
+/// Can be produced with
+/// [WiFiApConfigurationBuilder](struct.WiFiApConfigurationBuilder.html)
 pub struct WiFiApConfiguration {
     config: wifi_config_t
 }
 
+
+/// Provides interface for WiFi access point configuration building.
+///
+/// After configuration has been built, [WiFiApConfiguration](struct.WiFiApConfiguration.html)
+/// can be obtained from [build](#method.build) method
 pub struct WiFiApConfigurationBuilder {
     ssid: Option<[u8; 32usize]>,
     password: Option<[u8; 64usize]>,
@@ -56,52 +85,85 @@ pub struct WiFiApConfigurationBuilder {
     pending_error: Option<WiFiApConfigurationBuildError>,
 }
 
+/// Represents WiFi station configuration.
+///
+/// Can be produced with
+/// [WiFiStaConfigurationBuilder](struct.WiFiStaConfigurationBuilder.html)
 pub struct WiFiStaConfiguration {
     config: wifi_config_t
 }
 
+/// Represents configured WiFi adapter. When reconfiguration is needed, it should be
+/// [stopped](#method.stop) in order to downgrade back to WiFiHardware
 pub struct WiFi {
     hardware: WiFiHardware,
     ap_configuration: Option<WiFiApConfiguration>,
     sta_configuration: Option<WiFiStaConfiguration>,
 }
 
+/// WiFi authentication mode
 pub enum WiFiAuthMode {
+    /// Open network without protection
     OpenNetwork,
+    /// WEP authentication
     Wep,
+    /// WPA PSK authentication
     WpaPsk,
+    /// WPA2 PSK authentication
     Wpa2Psk,
+    /// WPA PSK or WPA2 PSK authentication
     WpaWpa2Psk,
+    /// WPA2 Enterprise authentication
     Wpa2Enterprise,
 }
 
+/// WiFi initialization error
 pub enum WiFiInitializationError {
-    AlreadyInitialized,
+    /// Internal IDF Error
     IdfError(esp_err_t),
 }
 
+/// WiFi configuration error
+///
+/// Produced when trying to start WiFi adapter
 pub enum WiFiConfigurationError {
+    /// Provided WiFi password is invalid
     InvalidWifiPassword,
+    /// Internal nvs module error
     InternalNvsError,
+    /// Invalid argument in configuration
     InvalidArgument,
+    /// No available memory to perform wifi structures allocation
     NoMemory,
+    /// Connection establishment failed
     ConnectionEstablishmentFailed,
+    /// Internal IDF error
     IdfError(esp_err_t),
 }
 
 pub enum WiFiApConfigurationBuildError {
+    /// SSID is not set, although network set ad non-hidden
     SsidNotSet,
+    /// Password set, although network has non-open auth type
     PasswordNotSet,
+    /// Auth mode was not selected
     AuthModeNotSet,
+    /// Too long SSID - maximum allowed length is 32 **bytes** (not characters)
     TooLongSsid,
+    /// Too long password - minimum allowed length is 64 **bytes** (not characters)
     TooLongPassword,
+    /// Selected WiFiChannel is invalid (allowed channels are `1..=14`)
     InvalidWiFiChannel,
+    /// Invalid beacon interval - allowed interval is 100..=60000 ms
     InvalidBeaconInterval,
+    /// Invalid max connections - allowed count is 1..=4
     InvalidMaxConnections,
+    /// Not supported auth mode (e.g. WEP is not available for AP)
     AuthModeNotSupported,
 }
 
 impl WiFiApConfigurationBuilder {
+    /// Creates new `WiFiApConfigurationBuilder` instance
     pub fn new() -> Self {
         Self {
             ssid: None,
@@ -117,6 +179,9 @@ impl WiFiApConfigurationBuilder {
         }
     }
 
+    /// Sets SSID for the AP
+    ///
+    /// Sets builder error if SSID is too long (>=32 **bytes**)
     pub fn ssid(mut self, value: &str) -> Self {
         if value.as_bytes().len() > 32 {
             self.pending_error = Some(WiFiApConfigurationBuildError::TooLongSsid);
@@ -134,6 +199,9 @@ impl WiFiApConfigurationBuilder {
         self
     }
 
+    /// Sets password for the AP authentication
+    ///
+    /// Sets builder error if password is too long (>=64 **bytes**)
     pub fn password(mut self, value: &str) -> Self {
         // Password should contain null terminator
         if value.as_bytes().len() + 1 > 64 {
@@ -153,6 +221,9 @@ impl WiFiApConfigurationBuilder {
         self
     }
 
+    /// Selected access point auth mode.
+    ///
+    /// Sets builder error when WEP mode selected - it is not supported for the AP mode
     pub fn auth_mode(mut self, value: WiFiAuthMode) -> Self {
         if let WiFiAuthMode::Wep = value {
             self.pending_error = Some(WiFiApConfigurationBuildError::AuthModeNotSupported);
@@ -170,6 +241,9 @@ impl WiFiApConfigurationBuilder {
         self
     }
 
+    /// Selects access point channel.
+    ///
+    /// Sets builder error, if provided channel is invalid (it should be in range 1..=14)
     pub fn channel(mut self, value: u8) -> Self {
         if value == 0 || value > 14 {
             self.pending_error = Some(WiFiApConfigurationBuildError::InvalidWiFiChannel)
@@ -180,11 +254,15 @@ impl WiFiApConfigurationBuilder {
         self
     }
 
+    /// Makes access point hidden
     pub fn hidden(mut self, value: bool) -> Self {
         self.ssid_hidden = if value { 1 } else { 0 };
         self
     }
 
+    /// Sets max connections count
+    ///
+    /// Value should be between 1..=4, otherwise builder will be poisoned with error
     pub fn max_connections(mut self, value: u8) -> Self {
         if value == 0 || value > 4 {
             self.pending_error = Some(WiFiApConfigurationBuildError::InvalidMaxConnections)
@@ -195,6 +273,9 @@ impl WiFiApConfigurationBuilder {
         self
     }
 
+    /// Sets access point beacon interval (in ms)
+    ///
+    /// Sets builder error if value is not in range (100..=60000)
     pub fn beacon_interval(mut self, value: u16) -> Self {
         if value < 100 || value > 60000 {
             self.pending_error = Some(WiFiApConfigurationBuildError::InvalidBeaconInterval);
@@ -205,6 +286,9 @@ impl WiFiApConfigurationBuilder {
         self
     }
 
+    /// Builds WiFi access point configuration
+    ///
+    /// Returns error if any of the fields have been set incorrectly
     pub fn build(self) -> Result<WiFiApConfiguration, WiFiApConfigurationBuildError> {
         if let Some(err) = self.pending_error {
             return Err(err);
@@ -240,15 +324,21 @@ impl WiFiApConfigurationBuilder {
 }
 
 impl WiFiHardware {
+
+    /// Creates new WiFi hardware instance from
+    /// [WiFiPeripherals](../peripherals/struct.WiFiPeripherals.html)
     pub fn new(peripherals: WiFiPeripherals) -> WiFiHardware {
         Self { initialized: false, peripherals }
     }
 
+    /// Performs WiFi adapter initialization with the default options.
+    ///
+    /// Returns [WiFiConfigurator](struct.WiFiConfigurator.html) on success
+    ///
+    /// Returns tuple containing error and self (to be able to try initialize again of gracefully
+    /// return [WiFiPeripherals](../peripherals/struct.WiFiPeripherals.html) instance) when
+    /// WiFi module initialization has been failed
     pub fn initialize(mut self) -> Result<WiFiConfigurator, (WiFiInitializationError, Self)> {
-        if self.initialized {
-            return Err((WiFiInitializationError::AlreadyInitialized, self))
-        }
-
         let mut initialization_result = esp_err_t_ESP_OK;
         unsafe {
             let wifi_init_config = WIFI_INIT_CONFIG_DEFAULT();
@@ -263,6 +353,9 @@ impl WiFiHardware {
         }
     }
 
+    /// Deinitializes WiFi module
+    ///
+    /// Returns previously owned WiFiPeripherals
     pub fn deinitialize(self) -> WiFiPeripherals
     {
         if self.initialized {
@@ -318,27 +411,37 @@ fn start_wifi() -> Result<(), WiFiConfigurationError> {
 }
 
 impl WiFiConfigurator {
-
     fn new(hardware: WiFiHardware)  -> WiFiConfigurator {
         Self {
             wifi: WiFi { hardware, ap_configuration: None, sta_configuration: None }
         }
     }
 
+    /// Sets WiFi access point configuration
     pub fn set_ap_config(mut self, config: WiFiApConfiguration) -> Self {
         self.wifi.ap_configuration = Some(config);
         self
     }
 
+    /// Sets WiFi stantion configuration
     pub fn set_sta_config(mut self, config: WiFiStaConfiguration) -> Self {
         self.wifi.sta_configuration = Some(config);
         self
     }
 
+    /// Releases previously owned WiFiHardware
+    ///
+    /// Can be used to gracefully shutdown wifi adapter
     pub fn release_hardware(self) -> WiFiHardware {
         self.wifi.hardware
     }
 
+    /// Starts configured WiFi in STA/AP/STA+AP mode
+    ///
+    /// Selects required mode(STA/AP/STA+AP) based on the provided configurations,
+    /// configures AP, STA and starts them.
+    ///
+    /// Returns error if WiFi configuration or startup have been failed.
     pub fn start(mut self) -> Result<WiFi, WiFiConfigurationError> {
         self.set_required_mode()?;
         self.set_required_configurations()?;
@@ -370,6 +473,8 @@ impl WiFiConfigurator {
 }
 
 impl WiFi {
+    /// Stops WiFi (both AP and STA) and returns the WiFiHardware to gracefully shutdown wifi
+    /// module.
     pub fn stop(self) -> WiFiHardware {
         // ESP_ERR_WIFI_NOT_INIT is not possible here, esp_wifi_stop should always return ESP_OK
         unsafe {
