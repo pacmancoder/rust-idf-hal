@@ -1,3 +1,27 @@
+//! This module provides access to wifi-related types.
+//! To use WiFiHarware type, defined in this module, WiFiPeripherals
+//! instance should be obtained first.
+//!
+//! Example usage:
+//! ```rust
+//!    let peripherals = Peripherals::take().unwrap();
+//!
+//!    let ap_config = WiFiApConfigurationBuilder::new()
+//!        .ssid("Hello, world!")
+//!        .auth_mode(WiFiAuthMode::Wpa2Psk)
+//!        .password("mypassword")
+//!        .build().ok().unwrap();
+//!
+//!    let wifi_configurator = WiFiHardware::new(peripherals.wifi)
+//!        .initialize()
+//!        .ok().unwrap();
+//!
+//!    let wifi = wifi_configurator
+//!        .set_ap_config(ap_config)
+//!        .start()
+//!        .ok().unwrap();
+//!
+//! ```
 use crate::peripherals::WiFiPeripherals;
 
 use idf_sys:: {
