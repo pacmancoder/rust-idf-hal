@@ -13,17 +13,23 @@
 //! let owned_wifi = peripherals.wifi;
 //! // Use wifi peripherals
 //! ```
+use core::marker::PhantomData;
 
 // TODO: Implement atomic singleton when atomics will be available in LLVM-rs
 
 /// Represents owned wifi peripherals
 pub struct WiFiPeripherals {}
 
+/// Represents owned gpio peripherals
+pub struct GpioPeripherals {}
+
 /// Represents owned idf peripherals. Can be deconstructed on the parts with the public fields
 /// for more granular access
 pub struct OwnedPeripherals {
     /// Owned WiFi peripherals
     pub wifi: WiFiPeripherals,
+    pub gpio: GpioPeripherals,
+    _data : PhantomData<()>,
 }
 
 /// Provides access to IDF peripherals
@@ -37,6 +43,8 @@ impl OwnedPeripherals {
     const fn new() -> OwnedPeripherals {
         OwnedPeripherals {
             wifi: WiFiPeripherals {},
+            gpio: GpioPeripherals {},
+            _data: PhantomData,
         }
     }
 }
