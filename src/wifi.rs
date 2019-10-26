@@ -51,12 +51,15 @@ pub struct WiFiHardware {
     peripherals: WiFiPeripherals,
 }
 
-/// Provides facilities to configure WiFi in AP/STA/both mode.
+/// Provides wifi control interface.
 ///
 /// Can be obtained from
 /// [WiFiHardware.initialize](struct.WiFiHardware.html#method.initialize).
-pub struct WiFiConfigurator {
-    wifi: WiFi,
+pub struct WiFi {
+    hardware: WiFiHardware,
+    ap_configuration: Option<WiFiApConfiguration>,
+    sta_configuration: Option<WiFiStaConfiguration>,
+    started: bool,
 }
 
 /// Represents WiFi access point configuration.
@@ -64,7 +67,7 @@ pub struct WiFiConfigurator {
 /// Can be produced with
 /// [WiFiApConfigurationBuilder](struct.WiFiApConfigurationBuilder.html)
 pub struct WiFiApConfiguration {
-    config: wifi_config_t
+    config: wifi_config_t,
 }
 
 
@@ -85,20 +88,128 @@ pub struct WiFiApConfigurationBuilder {
     pending_error: Option<WiFiApConfigurationBuildError>,
 }
 
+/// Represents threshold for access point scanning
+pub struct WiFiScanThreshold {
+    data: wifi_scan_threshold_t,
+}
+
+
+/// WiFi scan threshold build error
+pub enum WiFiScanThresholdBuildError {
+    /// Invalid value of Rssi
+    InvalidRssi,
+}
+
+/// Provides interface for WiFi scan threshold building
+pub struct WiFiScanThresholdBuilder {
+    rssi: Option<i8>,
+    auth_mode: Option<WiFiAuthMode>,
+
+    pending_error: Option<WiFiScanThresholdBuildError>
+}
+
+impl WiFiScanThresholdBuilder {
+    pub fn new() -> Self {
+        Self {
+            rssi: None,
+            auth_mode: None,
+            pending_error: None
+        }
+    }
+
+    /// Set minimal received
+    /// [signal strength](https://en.wikipedia.org/wiki/Received_signal_strength_indication);
+    /// Represented with negative value in db. If signal strength should be ignored on the scan,
+    /// this value should not be set for the threshold
+    pub fn min_signal_strength(mut self, rssi: i8) -> Self {
+        if (rssi >= 0) {
+            self.pending_error = Some(WiFiScanThresholdBuildError::InvalidRssi);
+        } else {
+            self.rssi = Some(rssi);
+        }
+
+        self
+    }
+
+    /// Sets minimal auth mode strength for the WiFi (e.g. open network is weaker than wpa2)
+    pub fn min_auth_mode(mut self, mode: WiFiAuthMode) -> Self {
+        self.auth_mode = Some(mode);
+        self
+    }
+
+    pub fn build(mut self) -> WiFiScanThreshold {
+        WiFiScanThreshold {
+            data : wifi_scan_threshold_t {
+                rssi: self.rssi.unwrap_or(0),
+                authmode: hal_to_sys::auth_mode(
+                    self.auth_mode.unwrap_or(WiFiAuthMode::OpenNetwork)
+                ),
+            }
+        }
+    }
+}
+
+/// Provides interface for WiFi station mode configuration building.
+///
+/// After configuration has been built, [WiFiStaConfiguration](struct.WiFiStaConfiguration.html)
+/// can be obtained from [build](#method.build) method
+pub struct WiFiStaConfigurationBuilder {
+    ssid: Option<[u8; 32]>,
+    password: Option<[u8; 64]>,
+    scan_method: wifi_scan_method_t,
+    bssid: Option<[u8; 6]>,
+    channel: u8,
+    listen_interval: u16,
+    sort_method: wifi_sort_method_t,
+    scan_threshold: Option<WiFiScanThreshold>,
+
+    pending_error: Option<WiFiStaConfigurationBuildError>,
+}
+
+mod hal_to_sys {
+    use super::*;
+
+    pub fn auth_mode(mode: WiFiAuthMode) -> u32 {
+        match mode {
+            WiFiAuthMode::OpenNetwork => wifi_auth_mode_t_WIFI_AUTH_OPEN,
+            WiFiAuthMode::WpaPsk => wifi_auth_mode_t_WIFI_AUTH_WPA_PSK,
+            WiFiAuthMode::Wpa2Psk => wifi_auth_mode_t_WIFI_AUTH_WPA2_PSK,
+            WiFiAuthMode::WpaWpa2Psk => wifi_auth_mode_t_WIFI_AUTH_WPA_WPA2_PSK,
+            WiFiAuthMode::Wpa2Enterprise => wifi_auth_mode_t_WIFI_AUTH_WPA2_ENTERPRISE,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn wifi_mode(mode: WiFiMode) -> u32 {
+        match mode {
+            WiFiMode::None => wifi_mode_t_WIFI_MODE_NULL,
+            WiFiMode::Ap => wifi_mode_t_WIFI_MODE_AP,
+            WiFiMode::Sta => wifi_mode_t_WIFI_MODE_STA,
+            WiFiMode::Combined => wifi_mode_t_WIFI_MODE_APSTA,
+        }
+    }
+
+    pub fn scan_method(method: WiFiScanMethod) -> u32 {
+        match method {
+            WiFiScanMethod::Fast => wifi_scan_method_t_WIFI_FAST_SCAN,
+            WiFiScanMethod::AllChannel => wifi_scan_method_t_WIFI_ALL_CHANNEL_SCAN,
+        }
+    }
+
+    pub fn sort_method(method: WiFiSortMethod) -> u32 {
+        match method {
+            WiFiSortMethod::BySignal => wifi_sort_method_t_WIFI_CONNECT_AP_BY_SIGNAL,
+            WiFiSortMethod::BySecurity => wifi_sort_method_t_WIFI_CONNECT_AP_BY_SECURITY,
+        }
+    }
+}
+
 /// Represents WiFi station configuration.
 ///
 /// Can be produced with
 /// [WiFiStaConfigurationBuilder](struct.WiFiStaConfigurationBuilder.html)
 pub struct WiFiStaConfiguration {
-    config: wifi_config_t
-}
-
-/// Represents configured WiFi adapter. When reconfiguration is needed, it should be
-/// [stopped](#method.stop) in order to downgrade back to WiFiHardware
-pub struct WiFi {
-    hardware: WiFiHardware,
-    ap_configuration: Option<WiFiApConfiguration>,
-    sta_configuration: Option<WiFiStaConfiguration>,
+    config: wifi_config_t,
 }
 
 /// WiFi authentication mode
@@ -137,6 +248,10 @@ pub enum WiFiConfigurationError {
     NoMemory,
     /// Connection establishment failed
     ConnectionEstablishmentFailed,
+    /// Ap-enabled mode requested but ap config is not set
+    ApConfigurationNotSet,
+    /// Sta-enabled mode requested but sta config is not set
+    StaConfigurationNotSet,
     /// Internal IDF error
     IdfError(esp_err_t),
 }
@@ -160,6 +275,50 @@ pub enum WiFiApConfigurationBuildError {
     InvalidMaxConnections,
     /// Not supported auth mode (e.g. WEP is not available for AP)
     AuthModeNotSupported,
+}
+
+/// WiFi STA configuration builder error
+pub enum WiFiStaConfigurationBuildError {
+    /// Ssid is not sat and no bssid was provided
+    SsidNotSet,
+    /// Password not set, but threshold requested non-open network
+    PasswordNotSet,
+    /// Too long SSID - maximum allowed length is 32 **bytes** (not characters)
+    TooLongSsid,
+    /// Too long password - minimum allowed length is 64 **bytes** (not characters)
+    TooLongPassword,
+    /// Selected WiFiChannel is invalid (allowed channels are `1..=14`)
+    InvalidWiFiChannel,
+    /// Listen interval should be > 0
+    InvalidListenInterval,
+}
+
+/// WiFi module operation mode
+pub enum WiFiMode {
+    /// Disable both AP & STA
+    None,
+    /// Ap-only mode
+    Ap,
+    /// Sta-only mode
+    Sta,
+    /// Combined mode (AP + STA)
+    Combined,
+}
+
+/// WiFi access points scan mode
+pub enum WiFiScanMethod {
+    /// Fast scan mode
+    Fast,
+    /// All-channel scan mode
+    AllChannel,
+}
+
+/// WiFi access points sorting during scan process
+pub enum WiFiSortMethod {
+    /// Scan by higher signal
+    BySignal,
+    /// Scan by more secure auth mode
+    BySecurity,
 }
 
 impl WiFiApConfigurationBuilder {
@@ -203,8 +362,9 @@ impl WiFiApConfigurationBuilder {
     ///
     /// Sets builder error if password is too long (>=64 **bytes**)
     pub fn password(mut self, value: &str) -> Self {
-        // Password should contain null terminator
-        if value.as_bytes().len() + 1 > 64 {
+        let password_len = value.as_bytes().len();
+
+        if password_len > 64 {
             self.pending_error = Some(WiFiApConfigurationBuildError::TooLongPassword);
         } else {
             let mut password : [u8; 64] = [0; 64];
@@ -213,7 +373,10 @@ impl WiFiApConfigurationBuilder {
                 *d = *s;
             }
 
-            password[value.as_bytes().len()] = b'\0';
+            // Add null-terminator
+            if password_len < 64 {
+                password[password_len] = b'\0';
+            }
 
             self.password = Some(password);
         }
@@ -228,14 +391,7 @@ impl WiFiApConfigurationBuilder {
         if let WiFiAuthMode::Wep = value {
             self.pending_error = Some(WiFiApConfigurationBuildError::AuthModeNotSupported);
         } else {
-            self.auth_mode = Some(match value {
-                WiFiAuthMode::OpenNetwork => wifi_auth_mode_t_WIFI_AUTH_OPEN,
-                WiFiAuthMode::WpaPsk => wifi_auth_mode_t_WIFI_AUTH_WPA_PSK,
-                WiFiAuthMode::Wpa2Psk => wifi_auth_mode_t_WIFI_AUTH_WPA2_PSK,
-                WiFiAuthMode::WpaWpa2Psk => wifi_auth_mode_t_WIFI_AUTH_WPA_WPA2_PSK,
-                WiFiAuthMode::Wpa2Enterprise => wifi_auth_mode_t_WIFI_AUTH_WPA2_ENTERPRISE,
-                _ => unreachable!(),
-            });
+            self.auth_mode = Some(hal_to_sys::auth_mode(value));
         }
 
         self
@@ -323,6 +479,170 @@ impl WiFiApConfigurationBuilder {
     }
 }
 
+impl WiFiStaConfigurationBuilder {
+    /// Creates new instance of WiFiStaConfigurationBuilder
+    fn new() -> Self {
+        Self {
+            ssid: None,
+            password: None,
+            scan_method: wifi_scan_method_t_WIFI_FAST_SCAN,
+            bssid: None,
+            channel: 0,
+            listen_interval: 3,
+            sort_method: wifi_sort_method_t_WIFI_CONNECT_AP_BY_SIGNAL,
+            scan_threshold: None,
+
+            pending_error: None,
+        }
+    }
+
+
+    /// Sets SSID for the STA
+    ///
+    /// Sets builder error if SSID is too long (>=32 **bytes**)
+    pub fn ssid(mut self, value: &str) -> Self {
+        let ssid_len = value.as_bytes().len();
+
+        if value.as_bytes().len() > 32 {
+            self.pending_error = Some(WiFiStaConfigurationBuildError::TooLongSsid);
+        } else {
+            let mut ssid : [u8; 32] = [0; 32];
+
+            for (s, d) in value.as_bytes().iter().zip(ssid.iter_mut()) {
+                *d = *s;
+            }
+
+            // Add terminating zero
+            if value.as_bytes().len() < 32 {
+                ssid[ssid_len] = b'\0';
+            }
+
+            self.ssid = Some(ssid);
+        }
+
+        self
+    }
+
+    /// Sets password for the AP authentication
+    ///
+    /// Sets builder error if password is too long (>=64 **bytes**)
+    pub fn password(mut self, value: &str) -> Self {
+        let password_len = value.as_bytes().len();
+
+        if password_len > 64 {
+            self.pending_error = Some(WiFiStaConfigurationBuildError::TooLongPassword);
+        } else {
+            let mut password : [u8; 64] = [0; 64];
+
+            for (s, d) in value.as_bytes().iter().zip(password.iter_mut()) {
+                *d = *s;
+            }
+
+            // Add null-terminator
+            if password_len < 64 {
+                password[password_len] = b'\0';
+            }
+
+            self.password = Some(password);
+        }
+
+        self
+    }
+
+    /// Changes access point scan mode for the station. Default is `WiFiScanMethod::Fast`
+    pub fn scan_method(mut self, method: WiFiScanMethod) -> Self {
+        self.scan_method = hal_to_sys::scan_method(method);
+
+        self
+    }
+
+    /// Sets bssid of the point to increase connection speed of for connection to the access points
+    /// with hidden ssid's
+    pub fn bssid(mut self, value: [u8; 6]) -> Self {
+        self.bssid = Some(value);
+        self
+    }
+
+    /// Selects target access point channel. Do not set the channel directly to
+    /// find it automatically
+    ///
+    /// Sets builder error, if provided channel is invalid (it should be in range 1..=14)
+    pub fn channel(mut self, value: u8) -> Self {
+        if value == 0 || value > 14 {
+            self.pending_error = Some(WiFiStaConfigurationBuildError::InvalidWiFiChannel)
+        } else {
+            self.channel = value;
+        }
+
+        self
+    }
+
+    /// Changes access points scan interval. Measured in AP beacon intervals (e.g. if AP beacon
+    /// interval was set to 100, and listen interval was set to 3 - resulting interval will be
+    /// 300ms. Beacon interval could be changed by setting ap configuration. Default beacon
+    /// interval is 100ms. Default listen interval is 3 (300ms)
+    pub fn listen_interval(mut self, interval: u16) -> Self {
+        if interval == 0 {
+            self.pending_error = Some(WiFiStaConfigurationBuildError::InvalidListenInterval);
+        } else {
+            self.listen_interval = interval
+        }
+
+        self
+    }
+
+    /// Changes access points sort method for scanning. Default sort method is
+    /// `WiFiSortMethod::BySignal`
+    pub fn sort_method(mut self, method: WiFiSortMethod) -> Self {
+        self.sort_method = hal_to_sys::sort_method(method);
+        self
+    }
+
+    /// Changes access points scan threshold settings
+    pub fn scan_threshold(mut self, threshold: WiFiScanThreshold) -> Self {
+        self.scan_threshold = Some(threshold);
+        self
+    }
+
+    /// Builds `WiFiStaCofiguration` or returns error.
+    pub fn build(self) -> Result<WiFiStaConfiguration, WiFiStaConfigurationBuildError> {
+        if let Some(err) = self.pending_error {
+            return Err(err)
+        }
+
+        if self.ssid.is_none() && self.bssid.is_none() {
+            return Err(WiFiStaConfigurationBuildError::SsidNotSet);
+        }
+
+        if let Some(ref threshold) = self.scan_threshold {
+            if threshold.data.authmode != wifi_auth_mode_t_WIFI_AUTH_OPEN
+                && self.password.is_none()
+            {
+                return Err(WiFiStaConfigurationBuildError::PasswordNotSet);
+            }
+        }
+
+        Ok(WiFiStaConfiguration {
+            config: wifi_config_t {
+                sta: wifi_sta_config_t {
+                    ssid: self.ssid.unwrap_or([0; 32]),
+                    password: self.password.unwrap_or([0; 64]),
+                    scan_method: self.scan_method,
+                    bssid_set: self.bssid.is_some(),
+                    bssid: self.bssid.unwrap_or([0; 6]),
+                    channel: self.channel,
+                    listen_interval: self.listen_interval,
+                    sort_method: self.sort_method,
+                    threshold: self.scan_threshold.map_or(wifi_scan_threshold_t {
+                        rssi: 0,
+                        authmode: wifi_auth_mode_t_WIFI_AUTH_OPEN,
+                    }, |t| t.data),
+                }
+            }
+        })
+    }
+}
+
 impl WiFiHardware {
 
     /// Creates new WiFi hardware instance from
@@ -333,13 +653,13 @@ impl WiFiHardware {
 
     /// Performs WiFi adapter initialization with the default options.
     ///
-    /// Returns [WiFiConfigurator](struct.WiFiConfigurator.html) on success
+    /// Returns [WiFi](struct.WiFi.html) on success
     ///
     /// Returns tuple containing error and self (to be able to try initialize again of gracefully
     /// return [WiFiPeripherals](../peripherals/struct.WiFiPeripherals.html) instance) when
     /// WiFi module initialization has been failed
-    pub fn initialize(mut self) -> Result<WiFiConfigurator, (WiFiInitializationError, Self)> {
-        let mut initialization_result = esp_err_t_ESP_OK;
+    pub fn initialize(mut self) -> Result<WiFi, (WiFiInitializationError, Self)> {
+        let initialization_result;
         unsafe {
             let wifi_init_config = WIFI_INIT_CONFIG_DEFAULT();
             initialization_result = esp_wifi_init(&wifi_init_config);
@@ -349,7 +669,7 @@ impl WiFiHardware {
             Err((WiFiInitializationError::IdfError(initialization_result), self))
         } else {
             self.initialized = true;
-            Ok(WiFiConfigurator::new(self))
+            Ok(WiFi::new(self))
         }
     }
 
@@ -373,6 +693,7 @@ unsafe fn set_wifi_config(interface: esp_interface_t, config: &mut wifi_config_t
     let result = esp_wifi_set_config(interface, config);
     // ESP_ERR_WIFI_NOT_INIT, ESP_ERR_INVALID_ARG and ESP_ERR_WIFI_IF are not possible
     // here due to idf-hal design
+    #[allow(non_upper_case_globals)]
     match result {
         esp_err_t_ESP_OK => Ok(()),
         esp_err_t_ESP_ERR_WIFI_PASSWORD => Err(WiFiConfigurationError::InvalidWifiPassword),
@@ -381,59 +702,42 @@ unsafe fn set_wifi_config(interface: esp_interface_t, config: &mut wifi_config_t
     }
 }
 
-fn set_wifi_mode(ap: bool, sta: bool) -> Result<(), WiFiConfigurationError> {
-    let mode = match ( ap, sta) {
-        (false, false) => wifi_mode_t_WIFI_MODE_NULL,
-        (true, false) => wifi_mode_t_WIFI_MODE_AP,
-        (false, true) => wifi_mode_t_WIFI_MODE_STA,
-        (true, true) => wifi_mode_t_WIFI_MODE_APSTA,
-    };
-
-    let result = unsafe { esp_wifi_set_mode(mode) };
-    // ESP_ERR_WIFI_NOT_INIT and ESP_ERR_INVALID_ARG are not possible here due to
-    // idf-hal design, only possible error is internal idf error
-    if result != esp_err_t_ESP_OK {
-        Err(WiFiConfigurationError::IdfError(result))
-    } else {
-        Ok(())
-    }
-}
-
-fn start_wifi() -> Result<(), WiFiConfigurationError> {
-    let result = unsafe { esp_wifi_start() };
-    match result {
-        esp_err_t_ESP_OK => Ok(()),
-        esp_err_t_ESP_ERR_NO_MEM => Err(WiFiConfigurationError::NoMemory),
-        esp_err_t_ESP_ERR_INVALID_ARG => Err(WiFiConfigurationError::InvalidArgument),
-        esp_err_t_ESP_ERR_WIFI_CONN => Err(WiFiConfigurationError::ConnectionEstablishmentFailed),
-        err => Err(WiFiConfigurationError::IdfError(err))
-    }
-}
-
-impl WiFiConfigurator {
-    fn new(hardware: WiFiHardware)  -> WiFiConfigurator {
+impl WiFi {
+    fn new(hardware: WiFiHardware)  -> Self {
         Self {
-            wifi: WiFi { hardware, ap_configuration: None, sta_configuration: None }
+            hardware,
+            ap_configuration: None,
+            sta_configuration: None,
+            started: false,
         }
     }
 
-    /// Sets WiFi access point configuration
-    pub fn set_ap_config(mut self, config: WiFiApConfiguration) -> Self {
-        self.wifi.ap_configuration = Some(config);
-        self
+    /// Sets or changes WiFi access point configuration
+    pub fn set_ap_config(&mut self, mut config: WiFiApConfiguration)
+        -> Result<&mut Self, WiFiConfigurationError>
+    {
+        unsafe {
+            set_wifi_config(esp_interface_t_ESP_IF_WIFI_AP, &mut config.config)?;
+        }
+        self.ap_configuration = Some(config);
+        Ok(self)
     }
 
-    /// Sets WiFi stantion configuration
-    pub fn set_sta_config(mut self, config: WiFiStaConfiguration) -> Self {
-        self.wifi.sta_configuration = Some(config);
-        self
+    /// Sets or changes WiFi station configuration
+    pub fn set_sta_config(&mut self, mut config: WiFiStaConfiguration)
+        -> Result<&mut Self, WiFiConfigurationError>
+    {
+        unsafe {
+            set_wifi_config(esp_interface_t_ESP_IF_WIFI_STA, &mut config.config)?;
+        }
+        self.sta_configuration = Some(config);
+        Ok(self)
     }
 
-    /// Releases previously owned WiFiHardware
-    ///
-    /// Can be used to gracefully shutdown wifi adapter
-    pub fn release_hardware(self) -> WiFiHardware {
-        self.wifi.hardware
+    /// Gracefully stops the WiFi and returns owned WiFiHardware
+    pub fn downgrade(mut self) -> WiFiHardware {
+        self.stop();
+        self.hardware
     }
 
     /// Starts configured WiFi in STA/AP/STA+AP mode
@@ -442,46 +746,67 @@ impl WiFiConfigurator {
     /// configures AP, STA and starts them.
     ///
     /// Returns error if WiFi configuration or startup have been failed.
-    pub fn start(mut self) -> Result<WiFi, WiFiConfigurationError> {
-        self.set_required_mode()?;
-        self.set_required_configurations()?;
-        start_wifi()?;
+    pub fn start(&mut self) -> Result<&mut Self, WiFiConfigurationError> {
+        let result = unsafe { esp_wifi_start() };
 
-        Ok(self.wifi)
+        #[allow(non_upper_case_globals)]
+        match result {
+            esp_err_t_ESP_OK => {
+                self.started = true;
+                Ok(self)
+            },
+            esp_err_t_ESP_ERR_NO_MEM => Err(WiFiConfigurationError::NoMemory),
+            esp_err_t_ESP_ERR_INVALID_ARG => Err(WiFiConfigurationError::InvalidArgument),
+            esp_err_t_ESP_ERR_WIFI_CONN => Err(WiFiConfigurationError::ConnectionEstablishmentFailed),
+            err => Err(WiFiConfigurationError::IdfError(err))
+        }
     }
 
-    fn set_required_mode(&self) -> Result<(), WiFiConfigurationError> {
-        set_wifi_mode(
-            self.wifi.ap_configuration.is_some(),
-            self.wifi.sta_configuration.is_some()
-        )
-    }
-
-    fn set_required_configurations(&mut self) -> Result<(), WiFiConfigurationError> {
-        unsafe {
-            if let Some(ref mut ap_configuration) = self.wifi.ap_configuration {
-                set_wifi_config(esp_interface_t_ESP_IF_WIFI_AP, &mut ap_configuration.config)?;
-            }
-
-            if let Some(ref mut sta_configuration) = self.wifi.sta_configuration {
-                set_wifi_config(esp_interface_t_ESP_IF_WIFI_STA, &mut sta_configuration.config)?;
-            }
+    /// Gracefully Stops wifi AP/STA
+    pub fn stop(&mut self) -> &mut Self {
+        if self.started {
+            unsafe { esp_wifi_stop(); }
+            self.started = false;
         }
 
-        Ok(())
+        self
     }
-}
 
-impl WiFi {
-    /// Stops WiFi (both AP and STA) and returns the WiFiHardware to gracefully shutdown wifi
-    /// module.
-    pub fn stop(self) -> WiFiHardware {
-        // ESP_ERR_WIFI_NOT_INIT is not possible here, esp_wifi_stop should always return ESP_OK
-        unsafe {
-            let result = esp_wifi_stop();
-            assert_eq!(esp_err_t_ESP_OK, result);
+    /// Sets WiFi adapter mode. Can be called both before and after WiFi was started.
+    /// If new WiFi mode narrows functionality (e.g. Combined -> STA), respective not requested
+    /// part (AP, STA, or both) wil be stopped.
+    ///
+    /// Returns error if requested mode config was not set or if idf returned internal error
+    pub fn set_mode(&mut self, mode: WiFiMode) -> Result<&mut Self, WiFiConfigurationError> {
+        let ap_to_be_enabled = match mode {
+            WiFiMode::Ap | WiFiMode::Combined => true,
+            _ => false,
+        };
+        let sta_to_be_enabled = match mode {
+            WiFiMode::Sta | WiFiMode::Combined => true,
+            _ => false,
+        };
+
+        if ap_to_be_enabled && self.ap_configuration.is_none() {
+            return Err(WiFiConfigurationError::ApConfigurationNotSet);
+        }
+        if sta_to_be_enabled && self.sta_configuration.is_none() {
+            return Err(WiFiConfigurationError::StaConfigurationNotSet);
         }
 
-        self.hardware
+        let result = unsafe { esp_wifi_set_mode(hal_to_sys::wifi_mode(mode)) };
+
+        // ESP_ERR_WIFI_NOT_INIT and ESP_ERR_INVALID_ARG are not possible here due to
+        // idf-hal design, only possible error is internal idf error
+        if result != esp_err_t_ESP_OK {
+            Err(WiFiConfigurationError::IdfError(result))
+        } else {
+            Ok(self)
+        }
+    }
+
+    /// Performs connection to the STA
+    pub fn connect(&mut self) -> Result<&mut Self, WiFiConfigurationError> {
+        Ok(self)
     }
 }
