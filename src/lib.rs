@@ -13,3 +13,4 @@
 pub mod wifi;
 pub mod peripherals;
 pub mod gpio;
+pub mod pwm;

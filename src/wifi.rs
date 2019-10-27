@@ -122,7 +122,7 @@ impl WiFiScanThresholdBuilder {
     /// Represented with negative value in db. If signal strength should be ignored on the scan,
     /// this value should not be set for the threshold
     pub fn min_signal_strength(mut self, rssi: i8) -> Self {
-        if (rssi >= 0) {
+        if rssi >= 0 {
             self.pending_error = Some(WiFiScanThresholdBuildError::InvalidRssi);
         } else {
             self.rssi = Some(rssi);
@@ -137,7 +137,7 @@ impl WiFiScanThresholdBuilder {
         self
     }
 
-    pub fn build(mut self) -> WiFiScanThreshold {
+    pub fn build(self) -> WiFiScanThreshold {
         WiFiScanThreshold {
             data : wifi_scan_threshold_t {
                 rssi: self.rssi.unwrap_or(0),

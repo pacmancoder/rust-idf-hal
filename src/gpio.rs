@@ -39,8 +39,8 @@ impl GpioHardware {
     }
 }
 
-type PinMask = u32;
-type PinId = u8;
+pub(crate) type PinMask = u32;
+pub(crate) type PinId = u8;
 
 pub trait GpioPin {
     const PIN_NUM : PinId;
@@ -87,6 +87,7 @@ pub trait OpenDrainPinMarker {}
 pub trait PullDownPinMarker {}
 pub trait PullUpPinMarker {}
 pub trait InterruptPinMarker {}
+pub trait PwmPinMarker {}
 
 macro_rules! impl_interrupt_pin_for {
     ($($type:ident),+) => { $(impl InterruptPinMarker for $type {})+ };
@@ -138,6 +139,13 @@ macro_rules! impl_pull_up_pin_for {
 
 // All pins except Gpio16 can be configured as pull up pins
 impl_pull_up_pin_for!(Gpio0, Gpio1, Gpio2, Gpio3, Gpio4, Gpio5, Gpio12, Gpio13, Gpio14, Gpio15);
+
+macro_rules! impl_pwm_pin_for {
+    ($($type:ident),+) => { $(impl PwmPinMarker for $type {})+ };
+}
+
+// All pins except Gpio16 can be configured as pwm pins
+impl_pwm_pin_for!(Gpio0, Gpio1, Gpio2, Gpio3, Gpio4, Gpio5, Gpio12, Gpio13, Gpio14, Gpio15);
 
 #[derive(Copy, Clone)]
 pub enum PinInterruptMode {
