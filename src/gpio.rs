@@ -4,17 +4,17 @@ use idf_sys::gpio::*;
 use crate::peripherals::GpioPeripherals;
 
 pub struct GpioHardware {
-    pub gpio0 : Gpio0,
-    pub gpio1 : Gpio1,
-    pub gpio2 : Gpio2,
-    pub gpio3 : Gpio3,
-    pub gpio4 : Gpio4,
-    pub gpio5 : Gpio5,
-    pub gpio12 : Gpio12,
-    pub gpio13 : Gpio13,
-    pub gpio14 : Gpio14,
-    pub gpio15 : Gpio15,
-    pub gpio16 : Gpio16,
+    pub gpio0 : Option<Gpio0>,
+    pub gpio1 : Option<Gpio1>,
+    pub gpio2 : Option<Gpio2>,
+    pub gpio3 : Option<Gpio3>,
+    pub gpio4 : Option<Gpio4>,
+    pub gpio5 : Option<Gpio5>,
+    pub gpio12 : Option<Gpio12>,
+    pub gpio13 : Option<Gpio13>,
+    pub gpio14 : Option<Gpio14>,
+    pub gpio15 : Option<Gpio15>,
+    pub gpio16 : Option<Gpio16>,
 
     _data : PhantomData<()>,
 }
@@ -22,17 +22,17 @@ pub struct GpioHardware {
 impl GpioHardware {
     pub fn new(_peripherals: GpioPeripherals) -> Self {
         GpioHardware {
-            gpio0 : Gpio0 { _data: PhantomData },
-            gpio1 : Gpio1 { _data: PhantomData },
-            gpio2 : Gpio2 { _data: PhantomData },
-            gpio3 : Gpio3 { _data: PhantomData },
-            gpio4 : Gpio4 { _data: PhantomData },
-            gpio5 : Gpio5 { _data: PhantomData },
-            gpio12 : Gpio12 { _data: PhantomData },
-            gpio13 : Gpio13 { _data: PhantomData },
-            gpio14 : Gpio14 { _data: PhantomData },
-            gpio15 : Gpio15 { _data: PhantomData },
-            gpio16 : Gpio16 { _data: PhantomData },
+            gpio0 : Some(Gpio0 { _data: PhantomData }),
+            gpio1 : Some(Gpio1 { _data: PhantomData }),
+            gpio2 : Some(Gpio2 { _data: PhantomData }),
+            gpio3 : Some(Gpio3 { _data: PhantomData }),
+            gpio4 : Some(Gpio4 { _data: PhantomData }),
+            gpio5 : Some(Gpio5 { _data: PhantomData }),
+            gpio12 : Some(Gpio12 { _data: PhantomData }),
+            gpio13 : Some(Gpio13 { _data: PhantomData }),
+            gpio14 : Some(Gpio14 { _data: PhantomData }),
+            gpio15 : Some(Gpio15 { _data: PhantomData }),
+            gpio16 : Some(Gpio16 { _data: PhantomData }),
 
             _data : PhantomData,
         }
@@ -51,6 +51,20 @@ pub trait GpioPin {
 
     fn get_pin_mask() -> PinMask {
         return 1 << Self::PIN_NUM as PinMask;
+    }
+}
+
+/// Special case of pin specifying "not connected"
+pub(crate) struct PhantomPin;
+impl GpioPin for PhantomPin {
+    const PIN_NUM: u8 = 255;
+
+    fn get_pin_id() -> u8 {
+        Self::PIN_NUM
+    }
+
+    fn get_pin_mask() -> u32 {
+        0x00000000
     }
 }
 
