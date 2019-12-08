@@ -457,7 +457,6 @@ impl WiFiApConfigurationBuilder {
         if self.auth_mode.is_none() {
             return Err(WiFiApConfigurationBuildError::AuthModeNotSet);
         }
-
         if self.password.is_none() && self.auth_mode.unwrap() != wifi_auth_mode_t_WIFI_AUTH_OPEN {
             return Err(WiFiApConfigurationBuildError::PasswordNotSet);
         }

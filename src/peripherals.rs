@@ -23,12 +23,17 @@ pub struct WiFiPeripherals {}
 /// Represents owned gpio peripherals
 pub struct GpioPeripherals {}
 
+/// Represents owned uart peripherals
+pub struct UartPeripherals {}
+
 /// Represents owned idf peripherals. Can be deconstructed on the parts with the public fields
 /// for more granular access
 pub struct OwnedPeripherals {
     /// Owned WiFi peripherals
     pub wifi: WiFiPeripherals,
     pub gpio: GpioPeripherals,
+    pub uart: UartPeripherals,
+
     _data : PhantomData<()>,
 }
 
@@ -44,6 +49,7 @@ impl OwnedPeripherals {
         OwnedPeripherals {
             wifi: WiFiPeripherals {},
             gpio: GpioPeripherals {},
+            uart: UartPeripherals {},
             _data: PhantomData,
         }
     }

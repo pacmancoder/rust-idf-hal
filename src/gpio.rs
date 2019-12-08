@@ -55,7 +55,7 @@ pub trait GpioPin {
 }
 
 /// Special case of pin specifying "not connected"
-pub(crate) struct PhantomPin;
+pub struct PhantomPin { _data: () }
 impl GpioPin for PhantomPin {
     const PIN_NUM: u8 = 255;
 
@@ -67,6 +67,10 @@ impl GpioPin for PhantomPin {
         0x00000000
     }
 }
+impl PhantomPin {
+    fn new() -> Self { Self { _data: () }}
+}
+
 
 macro_rules! define_gpio_pins {
     ($($type:ident : $id:expr),+) => {$(
@@ -76,6 +80,12 @@ macro_rules! define_gpio_pins {
 
         impl GpioPin for $type {
             const PIN_NUM : PinId = $id;
+        }
+
+        impl $type {
+            pub(crate) fn new() -> $type {
+                $type { _data: PhantomData }
+            }
         }
     )+}
 }
