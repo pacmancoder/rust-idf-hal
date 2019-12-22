@@ -237,6 +237,7 @@ pub enum WiFiInitializationError {
 /// WiFi configuration error
 ///
 /// Produced when trying to start WiFi adapter
+#[derive(Debug)]
 pub enum WiFiConfigurationError {
     /// Provided WiFi password is invalid
     InvalidWifiPassword,
@@ -248,14 +249,13 @@ pub enum WiFiConfigurationError {
     NoMemory,
     /// Connection establishment failed
     ConnectionEstablishmentFailed,
-    /// Ap-enabled mode requested but ap config is not set
-    ApConfigurationNotSet,
-    /// Sta-enabled mode requested but sta config is not set
-    StaConfigurationNotSet,
+    /// No configurations set
+    ConfigurationNotSet,
     /// Internal IDF error
     IdfError(esp_err_t),
 }
 
+#[derive(Debug)]
 pub enum WiFiApConfigurationBuildError {
     /// SSID is not set, although network set ad non-hidden
     SsidNotSet,
@@ -278,6 +278,7 @@ pub enum WiFiApConfigurationBuildError {
 }
 
 /// WiFi STA configuration builder error
+/// #[derive(Debug)]
 pub enum WiFiStaConfigurationBuildError {
     /// Ssid is not sat and no bssid was provided
     SsidNotSet,
@@ -294,6 +295,7 @@ pub enum WiFiStaConfigurationBuildError {
 }
 
 /// WiFi module operation mode
+#[derive(Eq, PartialEq, Copy, Clone)]
 pub enum WiFiMode {
     /// Disable both AP & STA
     None,
@@ -480,14 +482,14 @@ impl WiFiApConfigurationBuilder {
 
 impl WiFiStaConfigurationBuilder {
     /// Creates new instance of WiFiStaConfigurationBuilder
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             ssid: None,
             password: None,
             scan_method: wifi_scan_method_t_WIFI_FAST_SCAN,
             bssid: None,
             channel: 0,
-            listen_interval: 3,
+            listen_interval: 0,
             sort_method: wifi_sort_method_t_WIFI_CONNECT_AP_BY_SIGNAL,
             scan_threshold: None,
 
@@ -660,6 +662,9 @@ impl WiFiHardware {
     pub fn initialize(mut self) -> Result<WiFi, (WiFiInitializationError, Self)> {
         let initialization_result;
         unsafe {
+            // TODO: deinit in wifi release
+            tcpip_adapter_init();
+
             let wifi_init_config = WIFI_INIT_CONFIG_DEFAULT();
             initialization_result = esp_wifi_init(&wifi_init_config);
         }
@@ -712,25 +717,16 @@ impl WiFi {
     }
 
     /// Sets or changes WiFi access point configuration
-    pub fn set_ap_config(&mut self, mut config: WiFiApConfiguration)
-        -> Result<&mut Self, WiFiConfigurationError>
-    {
-        unsafe {
-            set_wifi_config(esp_interface_t_ESP_IF_WIFI_AP, &mut config.config)?;
-        }
+    pub fn set_ap_config(&mut self, mut config: WiFiApConfiguration) -> &mut Self {
         self.ap_configuration = Some(config);
-        Ok(self)
+        self
     }
 
     /// Sets or changes WiFi station configuration
-    pub fn set_sta_config(&mut self, mut config: WiFiStaConfiguration)
-        -> Result<&mut Self, WiFiConfigurationError>
+    pub fn set_sta_config(&mut self, mut config: WiFiStaConfiguration) -> &mut Self
     {
-        unsafe {
-            set_wifi_config(esp_interface_t_ESP_IF_WIFI_STA, &mut config.config)?;
-        }
         self.sta_configuration = Some(config);
-        Ok(self)
+        self
     }
 
     /// Gracefully stops the WiFi and returns owned WiFiHardware
@@ -746,6 +742,29 @@ impl WiFi {
     ///
     /// Returns error if WiFi configuration or startup have been failed.
     pub fn start(&mut self) -> Result<&mut Self, WiFiConfigurationError> {
+        let mode = match (self.sta_configuration.is_some(), self.ap_configuration.is_some()) {
+            (true, true) => WiFiMode::Combined,
+            (true, false) => WiFiMode::Sta,
+            (false, true) => WiFiMode::Sta,
+            _ => {
+                return Err(WiFiConfigurationError::ConfigurationNotSet);
+            }
+        };
+
+        let set_mode_result = unsafe { esp_wifi_set_mode(hal_to_sys::wifi_mode(mode)) };
+
+        if set_mode_result != esp_err_t_ESP_OK {
+            return Err(WiFiConfigurationError::IdfError(set_mode_result))
+        }
+
+        if let Some(ref mut config) = self.sta_configuration {
+            unsafe { set_wifi_config(esp_interface_t_ESP_IF_WIFI_STA, &mut config.config)?; }
+        }
+
+        if let Some(ref mut config) = self.ap_configuration {
+            unsafe { set_wifi_config(esp_interface_t_ESP_IF_WIFI_AP, &mut config.config)?; }
+        }
+
         let result = unsafe { esp_wifi_start() };
 
         #[allow(non_upper_case_globals)]
@@ -771,41 +790,13 @@ impl WiFi {
         self
     }
 
-    /// Sets WiFi adapter mode. Can be called both before and after WiFi was started.
-    /// If new WiFi mode narrows functionality (e.g. Combined -> STA), respective not requested
-    /// part (AP, STA, or both) wil be stopped.
-    ///
-    /// Returns error if requested mode config was not set or if idf returned internal error
-    pub fn set_mode(&mut self, mode: WiFiMode) -> Result<&mut Self, WiFiConfigurationError> {
-        let ap_to_be_enabled = match mode {
-            WiFiMode::Ap | WiFiMode::Combined => true,
-            _ => false,
-        };
-        let sta_to_be_enabled = match mode {
-            WiFiMode::Sta | WiFiMode::Combined => true,
-            _ => false,
-        };
-
-        if ap_to_be_enabled && self.ap_configuration.is_none() {
-            return Err(WiFiConfigurationError::ApConfigurationNotSet);
-        }
-        if sta_to_be_enabled && self.sta_configuration.is_none() {
-            return Err(WiFiConfigurationError::StaConfigurationNotSet);
-        }
-
-        let result = unsafe { esp_wifi_set_mode(hal_to_sys::wifi_mode(mode)) };
-
-        // ESP_ERR_WIFI_NOT_INIT and ESP_ERR_INVALID_ARG are not possible here due to
-        // idf-hal design, only possible error is internal idf error
-        if result != esp_err_t_ESP_OK {
-            Err(WiFiConfigurationError::IdfError(result))
+    /// Performs connection to the STA
+    pub fn connect(&mut self) -> Result<&mut Self, WiFiConfigurationError> {
+        let err = unsafe { esp_wifi_connect() };
+        if err != esp_err_t_ESP_OK {
+            Err(WiFiConfigurationError::IdfError(err))
         } else {
             Ok(self)
         }
-    }
-
-    /// Performs connection to the STA
-    pub fn connect(&mut self) -> Result<&mut Self, WiFiConfigurationError> {
-        Ok(self)
     }
 }

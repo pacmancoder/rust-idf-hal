@@ -365,8 +365,27 @@ impl<Uart: UartHardwareInstance> UartInitializer<Uart> {
 
             <<Uart as UartHardwareInstance>::Pins as UartGpioPins>::TxPin::capture_pin(gpio_hw);
             <<Uart as UartHardwareInstance>::Pins as UartGpioPins>::RxPin::capture_pin(gpio_hw);
-            <<Uart as UartHardwareInstance>::Pins as UartGpioPins>::CtsPin::capture_pin(gpio_hw);
-            <<Uart as UartHardwareInstance>::Pins as UartGpioPins>::RtsPin::capture_pin(gpio_hw);
+            match self.config.flow_ctrl {
+                uart_hw_flowcontrol_t_UART_HW_FLOWCTRL_CTS => {
+                    <<Uart as UartHardwareInstance>::Pins as UartGpioPins>::CtsPin::capture_pin(
+                        gpio_hw
+                    );
+                },
+                uart_hw_flowcontrol_t_UART_HW_FLOWCTRL_RTS => {
+                    <<Uart as UartHardwareInstance>::Pins as UartGpioPins>::RtsPin::capture_pin(
+                        gpio_hw
+                    );
+                }
+                uart_hw_flowcontrol_t_UART_HW_FLOWCTRL_CTS_RTS => {
+                    <<Uart as UartHardwareInstance>::Pins as UartGpioPins>::CtsPin::capture_pin(
+                        gpio_hw
+                    );
+                    <<Uart as UartHardwareInstance>::Pins as UartGpioPins>::RtsPin::capture_pin(
+                        gpio_hw
+                    );
+                }
+                _ => {}
+            }
 
             return Ok(Uart::InitializedType::build(UartInitializedMarker::new()));
 
