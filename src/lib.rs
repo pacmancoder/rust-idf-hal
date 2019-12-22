@@ -10,10 +10,11 @@
 
 #![no_std]
 
+extern crate alloc;
+
 pub mod wifi;
 pub mod peripherals;
 pub mod gpio;
 pub mod pwm;
 pub mod uart;
 pub mod watchdog;
-pub mod freertos;
