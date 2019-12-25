@@ -799,4 +799,16 @@ impl WiFi {
             Ok(self)
         }
     }
+
+    pub fn switch_sta_to_bgn_mode(&mut self) -> Result<&mut Self, WiFiConfigurationError> {
+        let err = unsafe { esp_wifi_set_protocol(
+            esp_interface_t_ESP_IF_WIFI_STA,
+            (WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N) as u8
+        ) };
+
+        match err {
+            esp_err_t_ESP_OK => Ok(self),
+            err => Err(WiFiConfigurationError::IdfError(err)),
+        }
+    }
 }

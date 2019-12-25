@@ -9,6 +9,7 @@
 //! See example of peripheral initialization in the [wifi](wifi/index.html) crate
 
 #![no_std]
+#![feature(non_exhaustive)]
 
 extern crate alloc;
 
@@ -18,3 +19,5 @@ pub mod gpio;
 pub mod pwm;
 pub mod uart;
 pub mod watchdog;
+pub mod nvs;
+pub mod system_event;
