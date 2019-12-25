@@ -67,10 +67,6 @@ impl GpioPin for PhantomPin {
         0x00000000
     }
 }
-impl PhantomPin {
-    fn new() -> Self { Self { _data: () }}
-}
-
 
 macro_rules! define_gpio_pins {
     ($($type:ident : $id:expr),+) => {$(
@@ -83,6 +79,7 @@ macro_rules! define_gpio_pins {
         }
 
         impl $type {
+            #[allow(dead_code)]
             pub(crate) fn new() -> $type {
                 $type { _data: PhantomData }
             }
@@ -205,44 +202,44 @@ pub struct InitializedPin<T : GpioPin> {
 }
 
 impl<T: GpioPin> InitializedPin<T> {
-    fn enable_pull_up(&mut self) -> &mut Self where T: PullUpPinMarker {
+    pub fn enable_pull_up(&mut self) -> &mut Self where T: PullUpPinMarker {
         unsafe { gpio_pullup_en(T::get_pin_id() as gpio_num_t); };
         self
     }
 
-    fn disable_pull_up(&mut self) -> &mut Self where T: PullUpPinMarker {
+    pub fn disable_pull_up(&mut self) -> &mut Self where T: PullUpPinMarker {
         unsafe { gpio_pullup_dis(T::get_pin_id() as gpio_num_t); };
         self
     }
 
-    fn enable_pull_down(&mut self) -> &mut Self where T: PullDownPinMarker {
+    pub fn enable_pull_down(&mut self) -> &mut Self where T: PullDownPinMarker {
         unsafe { gpio_pulldown_en(T::get_pin_id() as gpio_num_t); };
         self
     }
 
-    fn disable_pull_down(&mut self) -> &mut Self where T: PullDownPinMarker {
+    pub fn disable_pull_down(&mut self) -> &mut Self where T: PullDownPinMarker {
         unsafe { gpio_pulldown_dis(T::get_pin_id() as gpio_num_t); };
         self
     }
 
-    fn configure_as_input(&mut self) -> &mut Self where T: InputPinMarker {
+    pub fn configure_as_input(&mut self) -> &mut Self where T: InputPinMarker {
         unsafe { gpio_set_direction(T::get_pin_id() as gpio_num_t, gpio_mode_t_GPIO_MODE_INPUT); };
         self
     }
 
-    fn configure_as_output(&mut self) -> &mut Self where T: OutputPinMarker {
+    pub fn configure_as_output(&mut self) -> &mut Self where T: OutputPinMarker {
         unsafe { gpio_set_direction(T::get_pin_id() as gpio_num_t, gpio_mode_t_GPIO_MODE_OUTPUT); };
         self
     }
 
-    fn configure_as_open_drain(&mut self) -> &mut Self where T: OpenDrainPinMarker {
+    pub fn configure_as_open_drain(&mut self) -> &mut Self where T: OpenDrainPinMarker {
         unsafe {
             gpio_set_direction(T::get_pin_id() as gpio_num_t, gpio_mode_t_GPIO_MODE_OUTPUT_OD);
         };
         self
     }
 
-    fn set_interrupt_mode(&mut self, mode: PinInterruptMode) -> &mut Self where T: InterruptPinMarker {
+    pub fn set_interrupt_mode(&mut self, mode: PinInterruptMode) -> &mut Self where T: InterruptPinMarker {
         unsafe { gpio_set_intr_type(T::get_pin_id() as gpio_num_t, mode.to_raw()); };
         self
     }

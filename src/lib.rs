@@ -9,7 +9,14 @@
 //! See example of peripheral initialization in the [wifi](wifi/index.html) crate
 
 #![no_std]
-#![feature(non_exhaustive)]
+
+
+#![cfg_attr(target_arch = "xtensa", non_exhaustive)]
+
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+
 
 extern crate alloc;
 

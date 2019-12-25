@@ -50,8 +50,8 @@ impl Nvs {
 
         match partition_init_result {
             esp_err_t_ESP_OK => Ok(NvsPartition),
-            ESP_ERR_NVS_NO_FREE_PAGES => Err(NvsError::PartitionCorrupted),
-            ESP_ERR_NVS_NOT_FOUND => Err(NvsError::PartitionNotFound),
+            esp_err_t_ESP_ERR_NVS_NO_FREE_PAGES => Err(NvsError::PartitionCorrupted),
+            esp_err_t_ESP_ERR_NVS_NOT_FOUND => Err(NvsError::PartitionNotFound),
             err => Err(NvsError::IdfError(err)),
         }
     }
@@ -60,13 +60,13 @@ impl Nvs {
         self.default_partition_initialized = false
     }
 
-    pub fn erase_partition(&mut self, id: PartitionId) -> Result<(), NvsError> {
+    pub fn erase_partition(&mut self, _id: PartitionId) -> Result<(), NvsError> {
         if self.default_partition_initialized {
             Err(NvsError::AlreadyInitialized)
         } else {
             match unsafe { nvs_flash_erase() } {
                 esp_err_t_ESP_OK => Ok(()),
-                ESP_ERR_NVS_NOT_FOUND => Err(NvsError::PartitionNotFound),
+                esp_err_t_ESP_ERR_NVS_NOT_FOUND => Err(NvsError::PartitionNotFound),
                 err => Err(IdfError(err)),
             }
         }

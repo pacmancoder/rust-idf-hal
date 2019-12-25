@@ -717,13 +717,13 @@ impl WiFi {
     }
 
     /// Sets or changes WiFi access point configuration
-    pub fn set_ap_config(&mut self, mut config: WiFiApConfiguration) -> &mut Self {
+    pub fn set_ap_config(&mut self, config: WiFiApConfiguration) -> &mut Self {
         self.ap_configuration = Some(config);
         self
     }
 
     /// Sets or changes WiFi station configuration
-    pub fn set_sta_config(&mut self, mut config: WiFiStaConfiguration) -> &mut Self
+    pub fn set_sta_config(&mut self, config: WiFiStaConfiguration) -> &mut Self
     {
         self.sta_configuration = Some(config);
         self

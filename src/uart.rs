@@ -54,8 +54,8 @@ impl CaptureGpioPin for Gpio15 {
 }
 
 impl CaptureGpioPin for PhantomPin {
-    fn capture_pin(gpio_hw: &mut GpioHardware) {}
-    fn release_pin(gpio_hw: &mut GpioHardware) {}
+    fn capture_pin(_gpio_hw: &mut GpioHardware) {}
+    fn release_pin(_gpio_hw: &mut GpioHardware) {}
 }
 
 
@@ -101,7 +101,8 @@ pub trait UartHardwareInstance {
     const UART_PORT_NUM: UartNumber;
 }
 
-pub struct Uart0Hardware { guard : () }
+#[non_exhaustive]
+pub struct Uart0Hardware;
 impl UartHardwareInstance for Uart0Hardware {
     type Pins = Uart0GpioPins;
     type InitializedType = Uart0;
@@ -114,11 +115,12 @@ impl UartCanRead for Uart0Hardware {}
 impl UartHaveHardwareFlow for Uart0Hardware {}
 
 impl Uart0Hardware {
-    fn new() -> Self { Uart0Hardware { guard: () } }
-    fn into_alternative_mode(self) -> Uart0AltHardware { Uart0AltHardware::new() }
+    fn new() -> Self { Uart0Hardware }
+    pub fn into_alternative_mode(self) -> Uart0AltHardware { Uart0AltHardware::new() }
 }
 
-pub struct Uart0AltHardware { guard : () }
+#[non_exhaustive]
+pub struct Uart0AltHardware;
 impl UartHardwareInstance for Uart0AltHardware {
     type Pins = Uart0AltGpioPins;
     type InitializedType = Uart0Alt;
@@ -130,10 +132,11 @@ impl UartCanWrite for Uart0AltHardware {}
 impl UartCanRead for Uart0AltHardware {}
 
 impl Uart0AltHardware {
-    fn new() -> Self { Uart0AltHardware { guard: () } }
+    fn new() -> Self { Uart0AltHardware }
 }
 
-pub struct Uart1Hardware { guard : () }
+#[non_exhaustive]
+pub struct Uart1Hardware;
 impl UartHardwareInstance for Uart1Hardware {
     type Pins = Uart1GpioPins;
     type InitializedType = Uart1;
@@ -144,8 +147,8 @@ impl UartHardwareInstance for Uart1Hardware {
 impl UartCanWrite for Uart1Hardware {}
 
 impl Uart1Hardware {
-    fn new() -> Self { Uart1Hardware { guard: () } }
-    fn into_normal_mode(self) -> Uart0Hardware { Uart0Hardware::new() }
+    fn new() -> Self { Uart1Hardware }
+    pub fn into_normal_mode(self) -> Uart0Hardware { Uart0Hardware::new() }
 }
 
 #[derive(Eq, PartialEq)]
@@ -349,7 +352,7 @@ impl<Uart: UartHardwareInstance> UartInitializer<Uart> {
         unsafe {
             let uart_num = Uart::UART_PORT_NUM.map_to_ffi();
 
-            if (uart_param_config(uart_num, &mut self.config) != esp_err_t_ESP_OK) {
+            if uart_param_config(uart_num, &mut self.config) != esp_err_t_ESP_OK {
                 return Err(UartConfigError::Unknown);
             }
 
@@ -394,10 +397,11 @@ impl<Uart: UartHardwareInstance> UartInitializer<Uart> {
 }
 
 
-pub struct UartInitializedMarker { guard: () }
+#[non_exhaustive]
+pub struct UartInitializedMarker;
 
 impl UartInitializedMarker {
-    fn new() -> Self { UartInitializedMarker { guard: () }}
+    fn new() -> Self { UartInitializedMarker }
 }
 
 pub trait Uart {
@@ -407,19 +411,22 @@ pub trait Uart {
 }
 
 
-pub struct Uart0 { guard: () }
+#[non_exhaustive]
+pub struct Uart0;
 impl Uart0 {
-    fn new() -> Self { Uart0 { guard: () }}
+    fn new() -> Self { Uart0 }
 }
 
-pub struct Uart0Alt { guard: () }
+#[non_exhaustive]
+pub struct Uart0Alt;
 impl Uart0Alt {
-    fn new() -> Self { Uart0Alt { guard: () }}
+    fn new() -> Self { Uart0Alt }
 }
 
-pub struct Uart1 { guard: () }
+#[non_exhaustive]
+pub struct Uart1;
 impl Uart1 {
-    fn new() -> Self { Uart1 { guard: () }}
+    fn new() -> Self { Uart1 }
 }
 
 impl Uart for Uart0 {
@@ -480,7 +487,7 @@ impl<T: Uart> ReceivingUart for T where <T as Uart>::Hardware: UartCanRead {
             let written_bytes =
                 uart_read_bytes(uart_num, buffer.as_mut_ptr(), buffer.len() as u32, timeout);
 
-            if (written_bytes < 0) {
+            if written_bytes < 0 {
                 Err(ReadError::Timeout)
             } else {
                 Ok(written_bytes as usize)

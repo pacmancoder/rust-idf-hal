@@ -63,7 +63,7 @@ unsafe extern "C" fn event_loop_wrapper<F>(ctx: *mut xtensa_void, event: *mut sy
         _ => SystemEvent::Unknown
     });
 
-    /// release closure back to avoid destruction
+    // release closure back to avoid destruction
     Box::into_raw(closure);
     esp_err_t_ESP_OK
 }
